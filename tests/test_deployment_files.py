@@ -60,6 +60,25 @@ def test_dockerignore_excludes_the_local_venv():
     assert ".venv" in text
 
 
+def test_the_image_ships_the_vendored_docs_assets():
+    """/docs and /redoc are blank in the container without these.
+
+    They are the one place a few MB of committed JS is the right call: the
+    container has no network at runtime.
+    """
+    assert "COPY web ./web" in DOCKERFILE.read_text()
+    patterns = [
+        line.strip()
+        for line in (ROOT / ".dockerignore").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    for pattern in patterns:
+        assert "vendor" not in pattern, pattern
+        assert not pattern.startswith("web"), pattern
+    for filename in ("swagger-ui-bundle.js", "swagger-ui.css", "redoc.standalone.js"):
+        assert (ROOT / "web" / "vendor" / filename).is_file(), filename
+
+
 def test_readme_documents_both_deployments():
     text = (ROOT / "README.md").read_text()
     assert "setup_mac.sh" in text
