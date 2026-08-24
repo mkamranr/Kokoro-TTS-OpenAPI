@@ -3,15 +3,9 @@
 const $ = (selector) => document.querySelector(selector);
 
 const state = {
-  ctx: null,
   words: [],
-  chunks: [],
-  sources: [],
-  sampleRate: 24000,
-  scheduleAt: 0,
-  playStart: 0,
-  playing: false,
   raf: 0,
+  objectUrl: null,
 };
 
 /* ---------- helpers ---------- */
@@ -44,43 +38,11 @@ async function errorMessage(resp) {
   return "Request failed with status " + resp.status;
 }
 
-function decodePcm(base64) {
+function decodeBase64(base64) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return new Float32Array(bytes.buffer);
-}
-
-function wavBlob(chunks, sampleRate) {
-  let length = 0;
-  chunks.forEach((c) => { length += c.length; });
-  const buffer = new ArrayBuffer(44 + length * 2);
-  const view = new DataView(buffer);
-  const ascii = (offset, text) => {
-    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
-  };
-  ascii(0, "RIFF");
-  view.setUint32(4, 36 + length * 2, true);
-  ascii(8, "WAVEfmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  ascii(36, "data");
-  view.setUint32(40, length * 2, true);
-
-  let offset = 44;
-  chunks.forEach((chunk) => {
-    for (let i = 0; i < chunk.length; i += 1) {
-      const sample = Math.max(-1, Math.min(1, chunk[i]));
-      view.setInt16(offset, sample * 32767, true);
-      offset += 2;
-    }
-  });
-  return new Blob([view], { type: "audio/wav" });
+  return bytes;
 }
 
 /* ---------- voices ---------- */
@@ -175,84 +137,65 @@ function appendWord(word) {
   $("#transcript").appendChild(document.createTextNode(" "));
 }
 
-function startHighlighting(clock) {
-  cancelAnimationFrame(state.raf);
-  const tick = () => {
-    const index = findWordIndex(state.words, clock());
-    const spans = $("#transcript").querySelectorAll("span");
-    for (let i = 0; i < spans.length; i += 1) {
-      spans[i].classList.toggle("active", i === index);
-    }
-    if (state.playing) state.raf = requestAnimationFrame(tick);
-  };
-  state.raf = requestAnimationFrame(tick);
-}
-
-/* ---------- playback ---------- */
-
-function ensureContext() {
-  if (!state.ctx) {
-    const Ctor = window.AudioContext || window.webkitAudioContext;
-    state.ctx = new Ctor();
-  }
-  if (state.ctx.state === "suspended") state.ctx.resume();
-  return state.ctx;
-}
-
-function scheduleChunk(event) {
-  const samples = decodePcm(event.audio);
-  state.chunks.push(samples);
-
-  const ctx = state.ctx;
-  const buffer = ctx.createBuffer(1, samples.length, state.sampleRate);
-  buffer.copyToChannel(samples, 0);
-  const source = ctx.createBufferSource();
-  source.buffer = buffer;
-  source.connect(ctx.destination);
-
-  if (state.scheduleAt === 0) {
-    // Small lead-in so the first chunk is not clipped by scheduling latency.
-    state.scheduleAt = ctx.currentTime + 0.12;
-    state.playStart = state.scheduleAt;
-    state.playing = true;
-    startHighlighting(() => state.ctx.currentTime - state.playStart);
-  }
-  source.start(state.scheduleAt);
-  state.scheduleAt += buffer.duration;
-  state.sources.push(source);
-
-  (event.words || []).forEach((word) => {
-    state.words.push(word);
-    appendWord(word);
-  });
-}
-
-function stop() {
-  state.playing = false;
-  cancelAnimationFrame(state.raf);
-  state.sources.forEach((source) => {
-    try { source.stop(); } catch (err) { /* already finished */ }
-  });
-  state.sources = [];
-  state.scheduleAt = 0;
-  const player = $("#player");
-  player.pause();
+function clearHighlight() {
   $("#transcript").querySelectorAll("span.active").forEach((span) => {
     span.classList.remove("active");
   });
 }
 
-function offerDownload(blob, filename) {
-  const link = $("#download");
-  if (link.dataset.url) URL.revokeObjectURL(link.dataset.url);
+function startHighlighting() {
+  const player = $("#player");
+  cancelAnimationFrame(state.raf);
+  const tick = () => {
+    const index = findWordIndex(state.words, player.currentTime);
+    const spans = $("#transcript").querySelectorAll("span");
+    for (let i = 0; i < spans.length; i += 1) {
+      spans[i].classList.toggle("active", i === index);
+    }
+    if (!player.paused && !player.ended) state.raf = requestAnimationFrame(tick);
+  };
+  state.raf = requestAnimationFrame(tick);
+}
+
+function stopHighlighting() {
+  cancelAnimationFrame(state.raf);
+}
+
+/* ---------- playback ---------- */
+
+function loadAudio(bytes, format) {
+  const mime = format === "mp3" ? "audio/mpeg" : "audio/wav";
+  const blob = new Blob([bytes], { type: mime });
+  if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
   const url = URL.createObjectURL(blob);
+  state.objectUrl = url;
+
+  $("#player").src = url;
+
+  const link = $("#download");
   link.href = url;
-  link.dataset.url = url;
-  link.download = filename;
+  link.download = "kokoro." + format;
   link.hidden = false;
 }
 
+function stop() {
+  const player = $("#player");
+  player.pause();
+  player.currentTime = 0;
+  stopHighlighting();
+  clearHighlight();
+}
+
 /* ---------- synthesis ---------- */
+
+function reportStats(started, audioDuration) {
+  const total = (performance.now() - started) / 1000;
+  const rtf = audioDuration ? total / audioDuration : 0;
+  return (
+    "audio " + audioDuration.toFixed(2) + "s · synth " + total.toFixed(2) +
+    "s · RTF " + rtf.toFixed(2)
+  );
+}
 
 async function speak() {
   const text = $("#text").value.trim();
@@ -263,7 +206,6 @@ async function speak() {
 
   stop();
   state.words = [];
-  state.chunks = [];
   $("#transcript").innerHTML = "";
   $("#download").hidden = true;
   $("#speak").disabled = true;
@@ -271,118 +213,41 @@ async function speak() {
   localStorage.setItem("kokoro.key", $("#apiKey").value);
 
   const started = performance.now();
-  let firstAudioAt = null;
   setStatus("Synthesizing…");
 
-  let resp;
-  try {
-    resp = await api("/tts/stream", {
-      method: "POST",
-      body: JSON.stringify(requestBody()),
-    });
-  } catch (err) {
-    $("#speak").disabled = false;
-    return fallback("stream request failed");
-  }
-
-  if (!resp.ok) {
-    setStatus(await errorMessage(resp), true);
-    $("#speak").disabled = false;
-    return;
-  }
-  if (!resp.body || !(window.AudioContext || window.webkitAudioContext)) {
-    $("#speak").disabled = false;
-    return fallback("streaming unsupported in this browser");
-  }
-
-  ensureContext();
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffered = "";
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffered += decoder.decode(value, { stream: true });
-      const lines = buffered.split("\n");
-      buffered = lines.pop();
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line);
-        if (event.type === "meta") {
-          state.sampleRate = event.sample_rate;
-        } else if (event.type === "chunk") {
-          if (firstAudioAt === null) firstAudioAt = performance.now();
-          scheduleChunk(event);
-        } else if (event.type === "error") {
-          setStatus("Synthesis failed: " + event.message, true);
-          $("#speak").disabled = false;
-          return;
-        } else if (event.type === "done") {
-          reportStats(started, firstAudioAt, event.duration);
-        }
-      }
-    }
-  } catch (err) {
-    setStatus("Stream interrupted: " + err, true);
-  }
-
-  $("#speak").disabled = false;
-  if (state.chunks.length) {
-    offerDownload(wavBlob(state.chunks, state.sampleRate), "kokoro.wav");
-    const tail = (state.scheduleAt - state.ctx.currentTime + 0.4) * 1000;
-    setTimeout(() => { state.playing = false; }, Math.max(0, tail));
-  }
-}
-
-function reportStats(started, firstAudioAt, audioDuration) {
-  const total = (performance.now() - started) / 1000;
-  const ttfa = firstAudioAt ? (firstAudioAt - started) / 1000 : total;
-  const rtf = audioDuration ? total / audioDuration : 0;
-  setStatus(
-    "audio " + audioDuration.toFixed(2) + "s · first sound " + ttfa.toFixed(2) +
-    "s · total " + total.toFixed(2) + "s · RTF " + rtf.toFixed(2)
-  );
-}
-
-/** Non-streaming path: one /tts call, plain <audio> playback. */
-async function fallback(reason) {
-  setStatus("Falling back to non-streaming mode (" + reason + ")…");
-  const started = performance.now();
   const body = Object.assign(requestBody(), { include_timestamps: true });
-
   let resp;
   try {
     resp = await api("/tts", { method: "POST", body: JSON.stringify(body) });
   } catch (err) {
     setStatus("Request failed: " + err, true);
+    $("#speak").disabled = false;
     return;
   }
+
   if (!resp.ok) {
     setStatus(await errorMessage(resp), true);
+    $("#speak").disabled = false;
     return;
   }
 
   const payload = await resp.json();
+  $("#speak").disabled = false;
+
   state.words = payload.words || [];
   $("#transcript").innerHTML = "";
   state.words.forEach(appendWord);
 
-  const player = $("#player");
-  const mime = payload.format === "mp3" ? "audio/mpeg" : "audio/wav";
-  player.src = "data:" + mime + ";base64," + payload.audio;
-  player.hidden = false;
-  state.playing = true;
-  startHighlighting(() => player.currentTime);
-  player.onended = () => { state.playing = false; };
-  await player.play();
+  loadAudio(decodeBase64(payload.audio), payload.format);
 
-  const bytes = atob(payload.audio);
-  const array = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i += 1) array[i] = bytes.charCodeAt(i);
-  offerDownload(new Blob([array], { type: mime }), "kokoro." + payload.format);
-  reportStats(started, performance.now(), payload.duration);
+  const statsLine = reportStats(started, payload.duration);
+  const player = $("#player");
+  try {
+    await player.play();
+    setStatus(statsLine);
+  } catch (err) {
+    setStatus(statsLine + " — press play to listen (autoplay was blocked).", true);
+  }
 }
 
 /* ---------- wiring ---------- */
@@ -405,6 +270,14 @@ function init() {
   $("#stop").addEventListener("click", stop);
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") speak();
+  });
+
+  const player = $("#player");
+  player.addEventListener("play", startHighlighting);
+  player.addEventListener("pause", stopHighlighting);
+  player.addEventListener("ended", () => {
+    stopHighlighting();
+    clearHighlight();
   });
 
   loadVoices();

@@ -59,12 +59,12 @@
     <div class="actions">
       <button id="speak" type="button">Speak</button>
       <button id="stop" type="button" class="secondary">Stop</button>
-      <a id="download" class="secondary button" download="kokoro.wav" hidden>Download WAV</a>
+      <a id="download" class="secondary button" download="kokoro.wav" hidden>Download</a>
     </div>
 
     <p id="status" class="status">Ready.</p>
+    <audio id="player" class="player" controls preload="metadata"></audio>
     <div id="transcript" class="transcript" aria-live="polite"></div>
-    <audio id="player" hidden></audio>
   </main>
 
   <script src="app.js"></script>

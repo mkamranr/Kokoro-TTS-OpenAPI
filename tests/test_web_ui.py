@@ -20,7 +20,24 @@ def test_assets_are_served(client):
     js = client.get("/app.js")
     assert css.status_code == 200
     assert js.status_code == 200
-    assert "/tts/stream" in js.text
+    assert "/tts" in js.text
+    assert "include_timestamps" in js.text
+    html = (WEB_DIR / "index.html").read_text()
+    assert "<audio" in html
+    assert "controls" in html
+
+
+def test_the_ui_does_not_use_the_streaming_endpoint(client):
+    """Regression guard: the UI must stay on the complete-file /tts path.
+
+    /tts/stream remains a valid API capability for other clients, but the
+    laggy progressive-playback code path it drove (scheduleChunk/wavBlob)
+    must not creep back into the page.
+    """
+    js = client.get("/app.js")
+    assert "/tts/stream" not in js.text
+    assert "wavBlob" not in js.text
+    assert "scheduleChunk" not in js.text
 
 
 def test_every_referenced_asset_exists_on_disk():
