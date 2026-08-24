@@ -1,0 +1,42 @@
+# RTX 2070 is Turing (SM 7.5) — fully supported by cu121 builds.
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/opt/hf \
+    KOKORO_DEVICE=cuda \
+    KOKORO_HOST=0.0.0.0 \
+    KOKORO_PORT=8080
+
+# espeak-ng as belt and braces alongside the espeakng-loader wheel; curl for HEALTHCHECK.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends espeak-ng curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements-base.txt requirements-gpu.txt ./
+RUN pip install --no-cache-dir -r requirements-gpu.txt
+
+# misaki's English G2P needs the spaCy tagger.
+RUN python -m spacy download en_core_web_sm
+
+COPY app ./app
+COPY web ./web
+COPY scripts ./scripts
+
+# Bake the weights and all 28 English voices so the container starts offline.
+RUN python scripts/bake_assets.py
+
+RUN useradd --create-home --uid 10001 kokoro \
+    && chown -R kokoro:kokoro /opt/hf /app
+USER kokoro
+
+EXPOSE 8080
+# start-period covers model load + warm-up on first boot.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:8080/health || exit 1
+
+# Uses the launcher so KOKORO_HOST / KOKORO_PORT above are honored.
+CMD ["python", "-m", "app"]

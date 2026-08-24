@@ -1,0 +1,23 @@
+services:
+  kokoro:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cuda
+    image: kokoro-tts-api:latest
+    container_name: kokoro-tts
+    ports:
+      - "8080:8080"
+    environment:
+      KOKORO_DEVICE: cuda
+      KOKORO_HOST: 0.0.0.0
+      KOKORO_MAX_CONCURRENCY: "2"
+      # Uncomment before exposing this beyond localhost:
+      # KOKORO_API_KEY: change-me
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped

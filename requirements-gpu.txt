@@ -1,0 +1,7 @@
+-r requirements-base.txt
+
+# torch is provided by the CUDA base image (2.5.1+cu121). Do NOT add it here:
+# pip would fetch a CPU-only wheel and silently disable the GPU.
+transformers>=4.44,<5
+kokoro==0.9.4
+misaki[en]>=0.9.4

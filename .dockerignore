@@ -1,0 +1,13 @@
+.venv
+.git
+.gitignore
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+docs
+tests
+pytest.ini
+requirements-mac-cpu.txt
+requirements-dev.txt
+scripts/setup_mac.sh
