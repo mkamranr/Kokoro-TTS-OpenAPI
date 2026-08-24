@@ -28,3 +28,18 @@ def test_error_envelope_shape():
     assert resp.json() == {
         "error": {"message": "bad thing", "type": "invalid_request_error"}
     }
+
+
+def test_unknown_path_uses_the_error_envelope():
+    client = TestClient(create_app(), raise_server_exceptions=False)
+    resp = client.get("/no-such-path")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["type"] == "invalid_request_error"
+    assert "detail" not in resp.json()
+
+
+def test_wrong_method_uses_the_error_envelope():
+    client = TestClient(create_app(), raise_server_exceptions=False)
+    resp = client.post("/health")
+    assert resp.status_code == 405
+    assert resp.json()["error"]["type"] == "invalid_request_error"

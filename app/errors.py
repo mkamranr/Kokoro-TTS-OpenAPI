@@ -5,6 +5,7 @@ import uuid
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,19 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=400,
             content=envelope(f"{where}: {first.get('msg')}", "invalid_request_error"),
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(_: Request, exc: StarletteHTTPException):
+        if exc.status_code == 401:
+            type_ = "authentication_error"
+        elif exc.status_code < 500:
+            type_ = "invalid_request_error"
+        else:
+            type_ = "server_error"
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=envelope(str(exc.detail), type_),
         )
 
     @app.exception_handler(Exception)
