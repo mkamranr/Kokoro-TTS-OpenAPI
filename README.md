@@ -15,11 +15,15 @@ Open <http://127.0.0.1:8080/>.
 
 The pins in `requirements-mac-cpu.txt` are deliberate: `torch==2.2.2` is the last
 release with an Intel-Mac wheel, and `numpy<2` is what that torch was built
-against. Do not float them.
+against. Do not float them, and do not move `numpy<2` up into
+`requirements-base.txt` — the CUDA image ships numpy 2.x and must stay uncapped.
 
-Expect a real-time factor around 1.0–2.5 on a 2016 quad-core CPU — roughly 10–25
-seconds of compute per 10 seconds of audio. The streaming endpoint and the UI
-start playing before synthesis finishes, which hides most of that.
+Expect a real-time factor around 0.65 on a 2016 quad-core CPU — measured
+0.62–0.68 across short and long inputs, i.e. **faster than real time**: roughly
+6–7 seconds of compute per 10 seconds of audio. Add about 2.5 seconds of one-off
+model load and warm-up at startup. The streaming endpoint and the UI still
+matter, because they start playing on the first segment instead of waiting for
+the whole request.
 
 ## Quick start — Windows 11 + NVIDIA GPU (Docker)
 
@@ -43,7 +47,14 @@ curl http://localhost:8080/health
 | `POST /tts` | Native. Voice blending, word timestamps. |
 | `POST /tts/stream` | NDJSON stream of PCM chunks + timings. |
 | `GET /voices` | The 28 English voices with quality grades. |
-| `GET /health` | Device, backend, warm-up time. |
+| `GET /health` | Device, backend, warm-up time, resolved `models_dir`. |
+| `GET /docs`, `GET /redoc` | Swagger UI and ReDoc, served offline. |
+
+Interactive docs are served from assets vendored under `web/vendor/`, not from a
+CDN, so `/docs` and `/redoc` work inside the offline container. Refresh them
+with `.venv/bin/python scripts/fetch_docs_assets.py` (it pins exact versions of
+`swagger-ui-dist` and `redoc`, and the downloaded files are committed on
+purpose).
 
 ### OpenAI-compatible
 
@@ -70,12 +81,19 @@ curl -X POST http://127.0.0.1:8080/tts \
   "audio": "<base64 wav>",
   "format": "wav",
   "sample_rate": 24000,
-  "duration": 1.35,
+  "duration": 1.525,
   "voice": "af_heart",
-  "words": [{"word": "Hello", "start": 0.05, "end": 0.48},
-            {"word": "there", "start": 0.52, "end": 0.94}]
+  "segments": 1,
+  "phonemes": "həlˈO ðˈɛɹ.",
+  "words": [{"word": "Hello", "start": 0.375, "end": 0.675},
+            {"word": "there", "start": 0.675, "end": 1.25},
+            {"word": ".", "start": 1.25, "end": 1.425}]
 }
 ```
+
+`segments` is how many chunks Kokoro split the text into, and `phonemes` is the
+G2P output for the whole request. Sentence-final punctuation gets its own timed
+entry in `words`, because misaki times it — nothing filters it out.
 
 Without `include_timestamps`, the response is raw audio bytes.
 
@@ -112,10 +130,14 @@ field is ignored here — chunks are always raw PCM.
 | `KOKORO_MAX_CHARS` | `5000` | Per-request input cap |
 | `KOKORO_MAX_CONCURRENCY` | 1 (CPU) / 2 (CUDA) | Concurrent synthesis permits |
 | `KOKORO_TORCH_THREADS` | torch default | `torch.set_num_threads` |
+| `KOKORO_VOICE_CACHE_SIZE` | `32` | Blended-voice tensors kept in memory (LRU) |
 | `KOKORO_API_KEY` | unset | Requires `Authorization: Bearer` when set |
 | `KOKORO_HOST` / `KOKORO_PORT` | `127.0.0.1` / `8080` | Bind address |
 | `KOKORO_ALLOW_ORIGINS` | unset | Comma-separated CORS origins |
 | `HF_HOME` | `<repo>/models` | Weights/voices cache location |
+
+`KOKORO_DEFAULT_VOICE` is validated at startup: a typo aborts the boot naming
+the bad value, rather than turning every voice-less request into a 400.
 
 Binding to the LAN? Set `KOKORO_API_KEY` as well — `/health` stays public, every
 synthesis route requires the bearer token.
@@ -128,6 +150,12 @@ under `voices/*.pt` — about 326 MB total. Importing `app` points
 `HF_HOME` at `<repo>/models` before anything imports `huggingface_hub`
 (see `app/__init__.py`), so this happens automatically — no manual step is
 normally needed.
+
+Check where they actually landed: `GET /health` reports the resolved cache as
+`models_dir`, and startup logs it. If it resolves outside the project and you
+did not set `HF_HOME` yourself, startup logs a WARNING — that means something
+imported `huggingface_hub` before `app`, and weights would be re-downloaded
+into `~/.cache/huggingface` instead.
 
 **Automatic download.** The first time the app starts, or the first time it
 synthesizes, `huggingface_hub` fetches whatever isn't already on disk into
@@ -189,8 +217,11 @@ KOKORO_RUN_SLOW=1 .venv/bin/pytest -m slow    # loads the real model
 - **`KOKORO_DEVICE=cuda but torch reports no CUDA device`** — the container did
   not get the GPU. Check `nvidia-smi` on the host and that Docker Desktop's WSL2
   backend is enabled.
-- **Synthesis feels slow on the Mac** — expected; see the real-time factor note
-  above. Use `/tts/stream`, or point the UI at the GPU box.
+- **Synthesis feels slow on the Mac** — CPU synthesis runs at about 0.65× real
+  time, so a long request still takes seconds of wall clock even though compute
+  is faster than the audio it produces. Use `/tts/stream` so playback starts on
+  the first segment, or point the UI at the GPU box. The first request after
+  startup also pays a one-off model load and warm-up.
 - **`OSError: [E050] Can't find model 'en_core_web_sm'`** — run
   `.venv/bin/python -m spacy download en_core_web_sm`.
 - **Timestamps drift slightly** — Kokoro derives them from predicted phoneme
