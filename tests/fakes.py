@@ -51,5 +51,9 @@ class FakeEngine:
             t = np.arange(samples, dtype=np.float32) / SAMPLE_RATE
             audio = (0.3 * np.sin(2 * np.pi * 220.0 * t)).astype(np.float32)
             yield Segment(
-                index=index, audio=audio, words=words, phonemes=f"seg{index}"
+                index=index,
+                audio=audio,
+                words=words,
+                phonemes=f"seg{index}",
+                sample_rate=self.sample_rate,
             )

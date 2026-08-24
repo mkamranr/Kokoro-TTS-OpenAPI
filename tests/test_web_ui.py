@@ -1,6 +1,10 @@
 import re
 from pathlib import Path
 
+from starlette.routing import Mount
+
+from app.main import create_app
+
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 
@@ -38,3 +42,22 @@ def test_mounting_the_ui_does_not_shadow_the_api(client):
     assert client.get("/voices").status_code == 200
     assert client.post("/tts", json={"text": "hi"}).status_code == 200
     assert client.get("/health").status_code == 200
+
+
+def test_the_static_mount_is_registered_last():
+    """The invariant that keeps the "/" mount from swallowing the whole API.
+
+    A mount at "/" matches every path beneath it, so any route registered
+    after it is unreachable. Asserted structurally, not behaviourally: a route
+    added below the mount in create_app() fails HERE, with an explanation,
+    instead of silently 404ing in production.
+    """
+    routes = create_app().routes
+    mounts = [route for route in routes if isinstance(route, Mount)]
+    assert len(mounts) == 1, f"expected exactly one mount, got {mounts}"
+    assert mounts[0].path == ""  # Starlette stores a "/" mount as ""
+    after = routes[routes.index(mounts[0]) + 1 :]
+    assert not after, (
+        "the StaticFiles mount must be the LAST entry in app.routes, but these "
+        f"are registered after it and can never match: {after}"
+    )

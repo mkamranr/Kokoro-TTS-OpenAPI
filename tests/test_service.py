@@ -83,3 +83,51 @@ def test_info_includes_engine_details_and_concurrency():
     info = service.info()
     assert info["device"] == "fake"
     assert info["max_concurrency"] == 3
+
+
+class OddRateEngine(FakeEngine):
+    """A FakeEngine at a non-default rate, to catch a divided-by-the-wrong-rate bug.
+
+    Segment.duration used to divide by app.types.SAMPLE_RATE while
+    Synthesis.duration divided by engine.sample_rate. Equal at 24000, so no test
+    could tell them apart -- yet Segment.duration is what shifts every word
+    onto the absolute timeline, so a divergence would skew all of them.
+    """
+
+    sample_rate = 16000
+
+
+@pytest.mark.asyncio
+async def test_durations_and_word_offsets_use_the_engine_sample_rate():
+    engine = OddRateEngine()
+    service = SynthesisService(engine, max_concurrency=1)
+    result = await service.synthesize("one two\nthree four", "af_heart", "a", 1.0)
+
+    assert result.sample_rate == 16000
+    assert result.duration == pytest.approx(len(result.audio) / 16000)
+
+    # The second segment's offset must equal the first segment's real duration
+    # at the engine's rate -- not at app.types.SAMPLE_RATE.
+    segments = [
+        seg
+        async for seg in SynthesisService(
+            OddRateEngine(), max_concurrency=1
+        ).stream_segments("one two\nthree four", "af_heart", "a", 1.0)
+    ]
+    first_duration = len(segments[0].audio) / 16000
+    assert segments[0].duration == pytest.approx(first_duration)
+    assert segments[1].words[0].start == pytest.approx(first_duration)
+
+
+@pytest.mark.asyncio
+async def test_segment_durations_sum_to_the_total_duration():
+    """One source for the division means these cannot drift apart."""
+    service = SynthesisService(FakeEngine(), max_concurrency=1)
+    segments = [
+        seg
+        async for seg in service.stream_segments("a b\nc d\ne f", "af_heart", "a", 1.0)
+    ]
+    total = await SynthesisService(FakeEngine(), max_concurrency=1).synthesize(
+        "a b\nc d\ne f", "af_heart", "a", 1.0
+    )
+    assert sum(s.duration for s in segments) == pytest.approx(total.duration)

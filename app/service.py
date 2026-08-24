@@ -9,7 +9,7 @@ from typing import AsyncIterator
 
 from app.audio import concat
 from app.timing import TimelineAccumulator
-from app.types import EngineProtocol, Segment, Synthesis
+from app.types import EngineProtocol, Segment, Synthesis, audio_duration
 
 
 class SynthesisService:
@@ -62,7 +62,9 @@ class SynthesisService:
         return Synthesis(
             audio=audio,
             sample_rate=self.sample_rate,
-            duration=len(audio) / self.sample_rate,
+            # Same helper and same rate as Segment.duration, so the total can
+            # never disagree with the word offsets built from the segments.
+            duration=audio_duration(audio, self.sample_rate),
             words=words,
             phonemes=" ".join(phonemes),
             voice=voice,

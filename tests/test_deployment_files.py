@@ -96,6 +96,22 @@ def test_the_image_ships_the_vendored_docs_assets():
         assert (ROOT / "web" / "vendor" / filename).is_file(), filename
 
 
+def test_setup_mac_warns_about_a_foreign_arch_without_failing():
+    """Apple Silicon runs a newer torch fine; the pins here just aren't its own.
+
+    So the arch check warns loudly and continues. A hard failure would block a
+    machine that works, for constraints that do not apply to it.
+    """
+    text = (ROOT / "scripts" / "setup_mac.sh").read_text()
+    guard = re.search(
+        r'if \[ "\$arch" != "x86_64" \]; then\n(.*?)\nfi\n', text, re.DOTALL
+    )
+    assert guard, "expected an explicit x86_64 arch guard"
+    body = guard.group(1)
+    assert "WARNING" in body
+    assert "exit" not in body, "the arch guard must warn, not exit"
+
+
 def test_readme_documents_both_deployments():
     text = (ROOT / "README.md").read_text()
     assert "setup_mac.sh" in text

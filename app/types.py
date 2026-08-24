@@ -7,6 +7,19 @@ import numpy as np
 SAMPLE_RATE = 24000
 
 
+def audio_duration(audio: np.ndarray, sample_rate: int = SAMPLE_RATE) -> float:
+    """Samples to seconds. The ONE place this division happens.
+
+    Segment.duration and Synthesis.duration used to divide independently --
+    Segment by the module constant, Synthesis by engine.sample_rate. Equal
+    today at 24000, but a divergence would silently skew every word offset,
+    because Segment.duration is what TimelineAccumulator shifts by. Both now
+    call this, and both pass the producing engine's rate (EngineProtocol.
+    sample_rate), with SAMPLE_RATE as the sole default.
+    """
+    return len(audio) / sample_rate
+
+
 @dataclass(frozen=True)
 class WordTiming:
     word: str
@@ -20,13 +33,16 @@ class WordTiming:
 @dataclass
 class Segment:
     index: int
-    audio: np.ndarray  # float32, mono, SAMPLE_RATE
+    audio: np.ndarray  # float32, mono, at sample_rate
     words: list[WordTiming] = field(default_factory=list)
     phonemes: str = ""
+    # Stamped by the producing engine, so duration and word offsets can never
+    # be computed against a different rate than the audio was generated at.
+    sample_rate: int = SAMPLE_RATE
 
     @property
     def duration(self) -> float:
-        return len(self.audio) / SAMPLE_RATE
+        return audio_duration(self.audio, self.sample_rate)
 
 
 @dataclass

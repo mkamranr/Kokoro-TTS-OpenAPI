@@ -124,5 +124,6 @@ class KokoroEngine:
                 audio=audio,
                 words=words_from_tokens(result.tokens or []),
                 phonemes=result.phonemes or "",
+                sample_rate=self.sample_rate,
             )
             index += 1

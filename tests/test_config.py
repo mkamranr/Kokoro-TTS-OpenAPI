@@ -1,6 +1,21 @@
+import os
+
 import pytest
 
 from app.config import Settings, resolve_concurrency
+
+
+@pytest.fixture(autouse=True)
+def no_ambient_kokoro_env(monkeypatch):
+    """Settings() reads the real environment, so the tests must own it.
+
+    Without this, any exported KOKORO_* variable -- one left over from running
+    the server by hand, say -- breaks this file: test_defaults_match_spec would
+    be asserting the shell's values, not the defaults. monkeypatch restores
+    everything afterwards.
+    """
+    for name in [n for n in os.environ if n.upper().startswith("KOKORO_")]:
+        monkeypatch.delenv(name, raising=False)
 
 
 def test_defaults_match_spec():

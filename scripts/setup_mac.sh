@@ -8,6 +8,19 @@ PYTHON="${PYTHON:-python3.10}"
 echo "==> checking the environment"
 arch="$(uname -m)"
 echo "    arch:   $arch"
+# WARN, deliberately not a hard failure. The pins in requirements-mac-cpu.txt
+# (torch 2.2.2, the last Intel-Mac wheel, and its numpy<2 companion) simply do
+# not apply on Apple Silicon: that machine can run a current torch perfectly
+# well and should not be blocked by a script whose constraints are not its own.
+if [ "$arch" != "x86_64" ]; then
+  echo
+  echo "    WARNING: this script targets Intel macOS (x86_64), not $arch."
+  echo "    WARNING: requirements-mac-cpu.txt pins torch==2.2.2 + numpy<2 for the"
+  echo "    WARNING: last Intel-Mac wheel. On $arch, install a current torch"
+  echo "    WARNING: instead (pip install torch) and skip those two pins."
+  echo "    WARNING: continuing anyway -- the rest of the setup is arch-agnostic."
+  echo
+fi
 "$PYTHON" -c 'import sys; v=sys.version_info; \
   sys.exit(0 if (3,10) <= (v.major,v.minor) < (3,13) else 1)' || {
   echo "ERROR: need Python 3.10-3.12, got $("$PYTHON" -V 2>&1)"; exit 1; }

@@ -16,6 +16,7 @@ from app.config import get_settings, resolve_concurrency
 from app.errors import install_error_handlers
 from app.routes import health, native, openai
 from app.service import SynthesisService
+from app.voices import VOICES_BY_ID
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,12 +44,29 @@ FAVICON_DATA_URI = "data:image/svg+xml;base64," + base64.b64encode(
 ).decode("ascii")
 
 
+def validate_default_voice(voice: str) -> None:
+    """Fail fast on a typo'd KOKORO_DEFAULT_VOICE.
+
+    Unvalidated, a bad value is invisible until traffic arrives: every request
+    that omits a voice 400s with "Unknown voice", which points at the caller
+    rather than at the misconfiguration.
+    """
+    if voice in VOICES_BY_ID:
+        return
+    raise RuntimeError(
+        f"KOKORO_DEFAULT_VOICE={voice!r} is not a known voice id. "
+        f"Valid ids: {', '.join(sorted(VOICES_BY_ID))}"
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings = get_settings()
+    # Before the model load, so a typo costs a second rather than a minute.
+    validate_default_voice(settings.default_voice)
     if app.state.load_model:
         from app.engine import KokoroEngine  # local: keeps torch out of tests
 
-        settings = get_settings()
         # Logged (and WARNED about, if it leaked outside the project) before
         # anything can download into it.
         app_package.log_cache_location()
