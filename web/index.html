@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kokoro TTS</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Kokoro TTS</h1>
+    <span id="badge" class="badge">connecting…</span>
+  </header>
+
+  <main>
+    <textarea id="text" rows="5" placeholder="Type something to speak. Separate paragraphs with newlines — each one streams as it finishes."></textarea>
+    <div class="counter"><span id="count">0</span> characters</div>
+
+    <div class="controls">
+      <label>Voice
+        <select id="voice"></select>
+      </label>
+      <label>Accent
+        <select id="lang">
+          <option value="">from voice</option>
+          <option value="a">American</option>
+          <option value="b">British</option>
+        </select>
+      </label>
+      <label>Speed <output id="speedOut">1.00</output>
+        <input id="speed" type="range" min="0.5" max="2" step="0.05" value="1">
+      </label>
+      <label>Format
+        <select id="format">
+          <option value="wav">WAV</option>
+          <option value="mp3">MP3</option>
+        </select>
+      </label>
+    </div>
+
+    <details>
+      <summary>Advanced</summary>
+      <div class="advanced">
+        <label class="check">
+          <input id="blendOn" type="checkbox"> Blend with a second voice
+        </label>
+        <label>Second voice
+          <select id="voiceB"></select>
+        </label>
+        <label>Mix <output id="mixOut">50%</output>
+          <input id="mix" type="range" min="5" max="95" step="5" value="50">
+        </label>
+        <label>API key (only if the server sets one)
+          <input id="apiKey" type="password" autocomplete="off" placeholder="leave empty for local use">
+        </label>
+      </div>
+    </details>
+
+    <div class="actions">
+      <button id="speak" type="button">Speak</button>
+      <button id="stop" type="button" class="secondary">Stop</button>
+      <a id="download" class="secondary button" download="kokoro.wav" hidden>Download WAV</a>
+    </div>
+
+    <p id="status" class="status">Ready.</p>
+    <div id="transcript" class="transcript" aria-live="polite"></div>
+    <audio id="player" hidden></audio>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

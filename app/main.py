@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.auth import require_api_key
 from app.config import get_settings, resolve_concurrency
@@ -14,6 +15,8 @@ from app.service import SynthesisService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
 
 @asynccontextmanager
@@ -58,6 +61,9 @@ def create_app(load_model: bool = False) -> FastAPI:
     app.include_router(health.router)
     app.include_router(native.router, dependencies=[Depends(require_api_key)])
     app.include_router(openai.router, dependencies=[Depends(require_api_key)])
+
+    if WEB_DIR.is_dir():
+        app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
     return app
 
 
