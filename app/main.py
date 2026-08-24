@@ -1,8 +1,9 @@
 import logging
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth import require_api_key
 from app.config import get_settings
 from app.errors import install_error_handlers
 from app.routes import health, native, openai
@@ -23,8 +24,8 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
         )
     app.include_router(health.router)
-    app.include_router(native.router)
-    app.include_router(openai.router)
+    app.include_router(native.router, dependencies=[Depends(require_api_key)])
+    app.include_router(openai.router, dependencies=[Depends(require_api_key)])
     return app
 
 
