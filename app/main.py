@@ -10,6 +10,7 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+import app as app_package
 from app.auth import require_api_key
 from app.config import get_settings, resolve_concurrency
 from app.errors import install_error_handlers
@@ -48,6 +49,9 @@ async def lifespan(app: FastAPI):
         from app.engine import KokoroEngine  # local: keeps torch out of tests
 
         settings = get_settings()
+        # Logged (and WARNED about, if it leaked outside the project) before
+        # anything can download into it.
+        app_package.log_cache_location()
         logger.info("loading Kokoro (device=%s)", settings.device)
         engine = await asyncio.to_thread(
             KokoroEngine,
