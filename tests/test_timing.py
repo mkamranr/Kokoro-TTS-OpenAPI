@@ -29,12 +29,31 @@ def test_words_from_tokens_extracts_word_and_bounds():
 
 
 def test_tokens_without_timings_are_dropped():
+    """Missing timestamps is the ONLY reason a token is dropped."""
     tokens = [
         StubToken("Hi", start_ts=0.0, end_ts=0.3),
         StubToken(".", phonemes=None),
         StubToken("there", start_ts=None, end_ts=0.9),
     ]
     assert [w.word for w in words_from_tokens(tokens)] == ["Hi"]
+
+
+def test_a_timed_token_with_no_phonemes_is_still_emitted():
+    """misaki times sentence-final punctuation, and the spec keeps it.
+
+    The "." here has phonemes=None but real timestamps, which is exactly what
+    misaki produces for sentence-final punctuation -- so it belongs in the
+    `words` array. Filtering on phonemes instead of on timestamps would silently
+    drop it and lose real timing data.
+    """
+    tokens = [
+        StubToken("Hello", start_ts=0.0, end_ts=0.4),
+        StubToken(".", phonemes=None, start_ts=0.4, end_ts=0.55),
+    ]
+    assert words_from_tokens(tokens) == [
+        WordTiming("Hello", 0.0, 0.4),
+        WordTiming(".", 0.4, 0.55),
+    ]
 
 
 def test_surrounding_whitespace_is_stripped_from_words():

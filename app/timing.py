@@ -12,8 +12,14 @@ from app.types import WordTiming
 def words_from_tokens(tokens: Iterable) -> list[WordTiming]:
     """Extract timed words from misaki MTokens (duck-typed for testability).
 
-    Tokens without phonemes (punctuation, whitespace) never receive timestamps
-    and are skipped.
+    The rule is timestamps, nothing else: a token is skipped when start_ts or
+    end_ts is None, or when its text is blank after stripping. Whether it has
+    phonemes is irrelevant.
+
+    In particular, misaki DOES time sentence-final punctuation, so a token like
+    "." legitimately carries timestamps and legitimately appears in the API's
+    `words` array. Filtering punctuation out here (or in the engine, or in the
+    route) would throw away real timing data and contradict the spec.
     """
     words: list[WordTiming] = []
     for token in tokens:
