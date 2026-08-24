@@ -2,6 +2,11 @@
 
 # 2.2.2 is the last torch release with a macosx_10_9_x86_64 cp310 wheel.
 torch==2.2.2
+# Pinned HERE, not in requirements-base.txt: it pairs with torch 2.2.2,
+# which was built against numpy 1.x. The CUDA base image ships numpy 2.x
+# via conda, so a shared cap would make pip downgrade numpy inside a conda
+# environment on the GPU host.
+numpy<2
 # Current transformers releases assume newer torch; this one works with 2.2.
 transformers==4.44.2
 kokoro==0.9.4
