@@ -1,0 +1,8 @@
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30
+pydantic>=2.7,<3
+pydantic-settings>=2.3,<3
+numpy<2
+soundfile>=0.12
+lameenc>=1.7
+huggingface-hub>=0.25
