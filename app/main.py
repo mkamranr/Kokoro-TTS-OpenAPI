@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
 from app.errors import install_error_handlers
-from app.routes import health, native
+from app.routes import health, native, openai
 
 logging.basicConfig(level=logging.INFO)
 
@@ -24,6 +24,7 @@ def create_app() -> FastAPI:
         )
     app.include_router(health.router)
     app.include_router(native.router)
+    app.include_router(openai.router)
     return app
 
 
