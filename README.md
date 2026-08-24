@@ -115,10 +115,67 @@ field is ignored here — chunks are always raw PCM.
 | `KOKORO_API_KEY` | unset | Requires `Authorization: Bearer` when set |
 | `KOKORO_HOST` / `KOKORO_PORT` | `127.0.0.1` / `8080` | Bind address |
 | `KOKORO_ALLOW_ORIGINS` | unset | Comma-separated CORS origins |
-| `HF_HOME` | platform default | Weights/voices cache location |
+| `HF_HOME` | `<repo>/models` | Weights/voices cache location |
 
 Binding to the LAN? Set `KOKORO_API_KEY` as well — `/health` stays public, every
 synthesis route requires the bearer token.
+
+## Model weights
+
+Weights live inside the project, at `models/`, not in the shared
+`~/.cache/huggingface`. That's `kokoro-v1_0.pth` (312 MB) plus 28 voice packs
+under `voices/*.pt` — about 326 MB total. Importing `app` points
+`HF_HOME` at `<repo>/models` before anything imports `huggingface_hub`
+(see `app/__init__.py`), so this happens automatically — no manual step is
+normally needed.
+
+**Automatic download.** The first time the app starts, or the first time it
+synthesizes, `huggingface_hub` fetches whatever isn't already on disk into
+`models/`. Expect a one-time delay of a minute or more on a normal connection.
+
+**Pre-download explicitly** (recommended before the first real request, and
+what CI/Docker builds do):
+
+```bash
+.venv/bin/python scripts/bake_assets.py
+```
+
+`scripts/setup_mac.sh` already runs this for you, so macOS setups get it for
+free.
+
+**Manual download (air-gapped machines).** Fetch these files from
+<https://huggingface.co/hexgrad/Kokoro-82M>:
+
+- `config.json`
+- `kokoro-v1_0.pth`
+- `voices/*.pt` (all 28 English voice packs)
+
+Place them under a HuggingFace-cache-shaped directory so the loader finds
+them — `<snapshot-id>` can be any string, e.g. `manual`:
+
+```
+models/hub/models--hexgrad--Kokoro-82M/
+└── snapshots/
+    └── <snapshot-id>/
+        ├── config.json
+        ├── kokoro-v1_0.pth
+        └── voices/
+            ├── af_heart.pt
+            └── ... (28 files total)
+```
+
+**Relocating the cache.** Set `HF_HOME` to move weights elsewhere — it is read
+at import time, so export it before starting the app:
+
+```bash
+export HF_HOME=/path/to/cache
+.venv/bin/python -m app
+```
+
+`models/` is gitignored and excluded from the Docker build context
+(`.dockerignore`) — it is 326 MB of binary weights that should never be
+committed, and the Docker image bakes its own copy into `/opt/hf` at build
+time instead.
 
 ## Tests
 
