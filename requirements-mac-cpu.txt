@@ -1,0 +1,8 @@
+-r requirements-base.txt
+
+# 2.2.2 is the last torch release with a macosx_10_9_x86_64 cp310 wheel.
+torch==2.2.2
+# Current transformers releases assume newer torch; this one works with 2.2.
+transformers==4.44.2
+kokoro==0.9.4
+misaki[en]>=0.9.4
