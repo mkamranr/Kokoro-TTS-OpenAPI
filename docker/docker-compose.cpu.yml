@@ -1,0 +1,21 @@
+services:
+  kokoro:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cpu
+    image: kokoro-tts-api:cpu
+    container_name: kokoro-tts
+    ports:
+      - "8080:8080"
+    environment:
+      KOKORO_DEVICE: cpu
+      KOKORO_HOST: 0.0.0.0
+      KOKORO_MAX_CONCURRENCY: "1"
+      # Set to roughly your physical core count.
+      OMP_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+      # Uncomment before exposing this beyond localhost:
+      # KOKORO_API_KEY: change-me
+    # Optional: cap container CPU usage
+    # cpus: "4"
+    restart: unless-stopped
